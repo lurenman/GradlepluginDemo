@@ -1,0 +1,31 @@
+plugins {
+    id 'groovy'
+}
+dependencies {
+    //gradle sdk
+    implementation gradleApi()
+    //groovy sdk
+    implementation localGroovy()
+    //实现Transform的时候会用到,gradle插件版本:https://developer.android.com/studio/releases/gradle-plugin?hl=zh-cn#updating-gradle
+    implementation 'com.android.tools.build:gradle:4.1.0' //自带ASM7.0
+}
+
+def group = 'cn.tongdun' //组
+def version = '1.0.2' //版本
+def artifactId = 'TongdunPlugin' //唯一标示
+
+// doLast 表示task在执行阶段执行
+task copyPluginFile {
+    doLast {
+        copy {
+            println("--- copy tongdun plugin file to plugin-libs")
+            from '../gradle-plugin/build/libs/'
+            into '../plugin-libs/'
+            rename 'gradle-plugin.jar', artifactId + "-" + version + '.jar'
+        }
+    }
+}
+//在执行assemble、build或jar之后执行copyPluginFile
+assemble.finalizedBy(copyPluginFile)
+build.finalizedBy(copyPluginFile)
+jar.finalizedBy(copyPluginFile)
