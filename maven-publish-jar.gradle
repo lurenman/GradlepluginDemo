@@ -1,0 +1,100 @@
+task generateSorceJar(type: Jar) {
+    //dummy doc
+    group = 'jar'
+    archiveClassifier.set('sources')
+    //from "javasource"
+}
+// 生成 javadoc jar
+task javadocJar(type: Jar) {
+    classifier = 'javadoc'
+//    from javadoc.destinationDir
+}
+publishing {
+    def jarName = this.project.name.substring(4)
+    def libDescription = "A tool about android ${jarName}"
+    def getProjectByName = {
+        def name ->
+            return this.rootProject.getSubprojects().find {
+                it.name == name
+            }
+    }
+    def readProp =
+            {
+                File rfile, key, seg ->
+                    def value
+                    rfile.find { line ->
+                        if (line.contains(key)) {
+                            if (value == null) {
+                                value = line.split(seg)[1]
+                                return true
+                            }
+                        }
+                    }
+                    return value
+            }
+    def commonProject = getProjectByName("common")
+    def file = commonProject.file("src/main/java/cn/tongdun/android/common/setting/Constants.java")
+    def aarVersion = (readProp(file, "VERSION", "=") as String).with {
+        it = it.findAll('\\d..*\\d').pop()
+        it
+    }
+    def mavenVersion = ""
+    if (MAVEN_SNAPSHOT.toBoolean()) {
+        mavenVersion = this.project.ext.sdkVersionName + '-SNAPSHOT'
+    } else {
+        mavenVersion = this.project.ext.sdkVersionName
+    }
+    publications {
+        release(MavenPublication) {
+            groupId GROUP
+            artifactId jarName
+            version mavenVersion
+            artifact generateSorceJar //需要上传的source jar
+            artifact javadocJar
+            artifact("../output/${aarVersion}-saas/dev/build/jar/${jarName}/fm-${jarName}.jar")
+
+            pom {
+                // 库信息
+                name = jarName
+                packaging = 'jar'
+                description = libDescription
+                url = POM_URL
+                // 开放许可证书，可以自己换其他的
+                licenses {
+                    license {
+                        name = POM_LICENSE_NAME
+                        url = POM_LICENSE_URL
+                    }
+                }
+                // 开发者信息
+                developers {
+                    developer {
+                        id = POM_DEVELOPER_ID
+                        name = POM_DEVELOPER_NAME
+                        email = POM_DEVELOPER_EMAIL
+                    }
+                }
+                // scm
+                scm {
+                    url = POM_SCM_URL
+                    connection = POM_SCM_CONNECTION
+                    developerConnection = POM_SCM_DEV_CONNECTION
+                }
+            }
+        }
+    }
+    repositories {
+        maven {
+            def stagingRepoUrl = "https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/"
+            def snapshotsRepoUrl = "https://s01.oss.sonatype.org/content/repositories/snapshots/"
+            url = mavenVersion.endsWith('SNAPSHOT') ? snapshotsRepoUrl : stagingRepoUrl
+            credentials {
+                username = "${sonatypeUsername}"
+                password = "${sonatypePassword}"
+            }
+        }
+    }
+}
+signing {
+    sign publishing.publications.release
+}

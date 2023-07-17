@@ -1,0 +1,135 @@
+publishing {
+    def aarName = "trustdevice-pro"
+    def libDescription = "A tool about android device"
+    def getProjectByName = {
+        def name ->
+            return this.rootProject.getSubprojects().find {
+                it.name == name
+            }
+    }
+    def readProp =
+            {
+                File rfile, key, seg ->
+                    def value
+                    rfile.find { line ->
+                        if (line.contains(key)) {
+                            if (value == null) {
+                                value = line.split(seg)[1]
+                                return true
+                            }
+                        }
+                    }
+                    return value
+            }
+    def commonProject = getProjectByName("common")
+    def file = commonProject.file("src/main/java/cn/tongdun/android/common/setting/Constants.java")
+    def aarVersion = (readProp(file, "VERSION", "=") as String).with {
+        it = it.findAll('\\d..*\\d').pop()
+        it
+    }
+    def mavenVersion = ""
+    if (MAVEN_SNAPSHOT.toBoolean()) {
+        mavenVersion = aarVersion + '-SNAPSHOT'
+    } else {
+        mavenVersion = aarVersion
+    }
+    publications {
+        release(MavenPublication) {
+            groupId GROUP
+            artifactId aarName
+            version mavenVersion
+            artifact("../output/${aarVersion}-saas/implement/base/fraudmetrix-base-${aarVersion}.aar")
+
+            pom {
+                // 库信息
+                name = aarName
+                description = libDescription
+                url = POM_URL
+                // 开放许可证书，可以自己换其他的
+                licenses {
+                    license {
+                        name = POM_LICENSE_NAME
+                        url = POM_LICENSE_URL
+                    }
+                }
+                // 开发者信息
+                developers {
+                    developer {
+                        id = POM_DEVELOPER_ID
+                        name = POM_DEVELOPER_NAME
+                        email = POM_DEVELOPER_EMAIL
+                    }
+                }
+                // scm
+                scm {
+                    url = POM_SCM_URL
+                    connection = POM_SCM_CONNECTION
+                    developerConnection = POM_SCM_DEV_CONNECTION
+                }
+                //我们要implementation动态配置依赖我们的sdkjar包
+                withXml {
+                    def dependencieSdkList = ["sdk-packagelist", "sdk-readphone", "sdk-sensor", "sdk-location", "sdk-wifiinfo"]
+                    def dependenciesNode = asNode().appendNode('dependencies')
+                    dependencieSdkList.each {
+                        def sdkProject = getProjectByName(it)
+                        sdkProject?.with { Project pj ->
+                            def dependencyNode = dependenciesNode.appendNode('dependency')
+                            dependencyNode.appendNode('groupId', GROUP)
+                            dependencyNode.appendNode('artifactId', it.substring(4))
+                            def pjVersion = ""
+                            if (MAVEN_SNAPSHOT.toBoolean()) {
+                                pjVersion = pj.ext.sdkVersionName + '-SNAPSHOT'
+                            } else {
+                                pjVersion = pj.ext.sdkVersionName
+                            }
+                            dependencyNode.appendNode('version', pjVersion)
+                        }
+                    }
+                    //bugly ,版本变动需要及时更新
+                    def dependencyNode = dependenciesNode.appendNode('dependency')
+                    dependencyNode.appendNode('groupId', GROUP)
+                    dependencyNode.appendNode('artifactId', 'core-plugin')
+                    def pjVersion = "1.1.1"
+                    dependencyNode.appendNode('version', MAVEN_SNAPSHOT.toBoolean()?(pjVersion+'-SNAPSHOT'):pjVersion)
+
+
+                    /*         configurations.implementation.allDependencies.each {
+                                 if (it.version != "unspecified") { // 过滤项目内library引用
+                                     println "=====>" + it.properties
+                                     println "=====>" + it.group + "  " + it.name + it.version
+                                     if (it.group == null || it.name == null || it.version == null) return
+                                     if (it.group == group) return
+                                     def dependencyNode = dependenciesNode.appendNode('dependency')
+                                     dependencyNode.appendNode('groupId', it.group)
+                                     dependencyNode.appendNode('artifactId', it.name)
+                                     dependencyNode.appendNode('version', it.version)
+
+                                     if (it.excludeRules.size() > 0) {
+                                         def exclusionsNode = dependencyNode.appendNode('exclusions')
+                                         it.excludeRules.each { rule ->
+                                             def exclusionNode = exclusionsNode.appendNode('exclusion')
+                                             exclusionNode.appendNode('groupId', rule.group)
+                                             exclusionNode.appendNode('artifactId', rule.module)
+                                         }
+                                     }
+                                 }
+                             }*/
+                }
+            }
+        }
+    }
+    repositories {
+        maven {
+            def stagingRepoUrl = "https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/"
+            def snapshotsRepoUrl = "https://s01.oss.sonatype.org/content/repositories/snapshots/"
+            url = mavenVersion.endsWith('SNAPSHOT') ? snapshotsRepoUrl : stagingRepoUrl
+            credentials {
+                username = "${sonatypeUsername}"
+                password = "${sonatypePassword}"
+            }
+        }
+    }
+}
+signing {
+    sign publishing.publications.release
+}
